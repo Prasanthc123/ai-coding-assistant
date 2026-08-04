@@ -10,7 +10,7 @@
   <main class="app-shell">
     <aside class="sidebar">
       <h1>CodePilot</h1>
-      <button class="new-chat">+ New Chat</button>
+      <button class="new-chat" type="button">+ New Chat</button>
 
       <p class="sidebar-label">CHAT HISTORY</p>
       <div class="history-item">Today’s coding session</div>
@@ -22,13 +22,6 @@
           <h2>AI Coding Assistant</h2>
           <p>Local FastAPI application</p>
         </div>
-
-        <select id="language">
-          <option value="Python">Python</option>
-          <option value="JavaScript">JavaScript</option>
-          <option value="Java">Java</option>
-          <option value="C++">C++</option>
-        </select>
       </header>
 
       <div id="messages" class="messages">
@@ -38,14 +31,50 @@
       </div>
 
       <form id="chat-form" class="input-area">
-        <input
-          id="message-input"
-          type="text"
-          placeholder="Ask a programming question..."
-          autocomplete="off"
-          required
-        />
-        <button type="submit">Send</button>
+        <div class="composer">
+          <textarea
+            id="message-input"
+            placeholder="Ask anything about programming..."
+            rows="2"
+            autocomplete="off"
+            required
+          ></textarea>
+
+          <div class="composer-toolbar">
+            <button class="composer-icon" type="button" aria-label="Add attachment">
+              +
+            </button>
+
+            <span class="composer-label">Local AI assistant</span>
+
+            <select id="language" aria-label="Programming language">
+              <option value="Python">Python</option>
+              <option value="JavaScript">JavaScript</option>
+              <option value="TypeScript">TypeScript</option>
+              <option value="Java">Java</option>
+              <option value="C">C</option>
+              <option value="C++">C++</option>
+              <option value="C#">C#</option>
+              <option value="Go">Go</option>
+              <option value="Rust">Rust</option>
+              <option value="PHP">PHP</option>
+              <option value="Ruby">Ruby</option>
+              <option value="Kotlin">Kotlin</option>
+              <option value="Swift">Swift</option>
+              <option value="Dart">Dart</option>
+              <option value="Scala">Scala</option>
+              <option value="R">R</option>
+              <option value="MATLAB">MATLAB</option>
+              <option value="SQL">SQL</option>
+              <option value="HTML and CSS">HTML and CSS</option>
+              <option value="Bash">Bash</option>
+            </select>
+
+            <button class="send-button" type="submit" aria-label="Send message">
+              ↑
+            </button>
+          </div>
+        </div>
       </form>
     </section>
   </main>
