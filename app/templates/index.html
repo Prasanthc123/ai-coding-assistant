@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Coding Assistant</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <h1>CodePilot</h1>
+      <button class="new-chat">+ New Chat</button>
+
+      <p class="sidebar-label">CHAT HISTORY</p>
+      <div class="history-item">Today’s coding session</div>
+    </aside>
+
+    <section class="chat-panel">
+      <header class="chat-header">
+        <div>
+          <h2>AI Coding Assistant</h2>
+          <p>Local FastAPI application</p>
+        </div>
+
+        <select id="language">
+          <option value="Python">Python</option>
+          <option value="JavaScript">JavaScript</option>
+          <option value="Java">Java</option>
+          <option value="C++">C++</option>
+        </select>
+      </header>
+
+      <div id="messages" class="messages">
+        <div class="message assistant">
+          Hello! Ask me a programming question.
+        </div>
+      </div>
+
+      <form id="chat-form" class="input-area">
+        <input
+          id="message-input"
+          type="text"
+          placeholder="Ask a programming question..."
+          autocomplete="off"
+          required
+        />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
