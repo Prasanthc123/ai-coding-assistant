@@ -77,12 +77,12 @@ body {
 }
 
 .message {
-  max-width: 700px;
+  max-width: 850px;
   width: fit-content;
+  margin-bottom: 18px;
   padding: 14px 16px;
   border-radius: 12px;
   line-height: 1.5;
-  white-space: pre-wrap;
 }
 
 .assistant {
@@ -93,6 +93,69 @@ body {
   margin-left: auto;
   background: #2563eb;
   color: white;
+  white-space: pre-wrap;
+}
+
+.normal-text {
+  margin-bottom: 14px;
+  white-space: pre-wrap;
+}
+
+.message h3 {
+  margin: 18px 0 10px;
+  color: #f8fafc;
+}
+
+.code-card {
+  width: 100%;
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.code-card-header {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between !important;
+  width: 100%;
+  padding: 10px 14px;
+  border-bottom: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.copy-button {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.copy-button:hover {
+  background: #e2e8f0;
+}
+
+.code-card pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.code-card code {
+  color: #111827;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre;
 }
 
 .input-area {
@@ -175,6 +238,11 @@ body {
 
 .send-button:hover {
   background: #ffffff;
+}
+
+.send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 @media (max-width: 700px) {

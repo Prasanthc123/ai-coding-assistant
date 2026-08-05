@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
+from typing import AsyncGenerator
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -30,14 +32,15 @@ async def home():
     return page.read_text(encoding="utf-8")
 
 
-@app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def stream_ollama_response(
+    request: ChatRequest,
+) -> AsyncGenerator[str, None]:
     prompt = f"""
-You are a helpful coding assistant.
+You are a concise coding assistant.
 
-Answer the user's question about {request.language}.
-Give clear explanations and code examples when useful.
-Use Markdown code blocks for code.
+Answer the user's question in {request.language}.
+Give a short explanation and one complete code example.
+Keep the answer focused and correct.
 
 User question:
 {request.message}
@@ -46,24 +49,48 @@ User question:
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
-        "stream": False,
+        "stream": True,
         "options": {
-            "temperature": 0.2
+            "temperature": 0.1
         }
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(OLLAMA_URL, json=payload)
-            response.raise_for_status()
+    timeout = httpx.Timeout(
+        connect=15.0,
+        read=None,
+        write=30.0,
+        pool=15.0
+    )
 
-        data = response.json()
-        return {"reply": data["response"].strip()}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
+                OLLAMA_URL,
+                json=payload
+            ) as response:
+                response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+
+                    chunk = json.loads(line)
+                    text = chunk.get("response", "")
+
+                    if text:
+                        yield text
 
     except httpx.ConnectError:
-        return {
-            "reply": "Cannot connect to Ollama. Make sure the Ollama application is running."
-        }
+        yield "Cannot connect to Ollama. Make sure the Ollama application is running."
 
     except httpx.HTTPError as error:
-        return {"reply": f"Ollama request failed: {error}"}
+        yield f"Ollama request failed: {error}"
+
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    return StreamingResponse(
+        stream_ollama_response(request),
+        media_type="text/plain; charset=utf-8"
+    )
