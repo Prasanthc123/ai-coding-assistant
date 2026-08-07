@@ -83,6 +83,17 @@ class DocumentProcessor:
         # perform OCR
         try:
             image = Image.open(file_path)
+
+            # Downscale very large screenshots/photos before OCR. This keeps
+            # OCR fast (large images can take a long time) without hurting
+            # accuracy, since Tesseract does not benefit from ultra-high
+            # resolutions beyond a reasonable width.
+            max_dimension = 2200
+            if max(image.size) > max_dimension:
+                scale = max_dimension / max(image.size)
+                new_size = (int(image.width * scale), int(image.height * scale))
+                image = image.resize(new_size, Image.LANCZOS)
+
             text = pytesseract.image_to_string(image)
             if text and text.strip():
                 return text
