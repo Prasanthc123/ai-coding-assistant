@@ -41,9 +41,15 @@ async def home():
     return page.read_text(encoding="utf-8")
 
 
+MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...)):
     try:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="Uploaded file has no filename")
+
         allowed_extensions = [
             ".pdf",
             ".txt",
@@ -62,6 +68,14 @@ async def upload_document(file: UploadFile = File(...)):
             )
 
         content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        if len(content) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Max size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB",
+            )
+
         file_path = FileManager.save_file(content, file.filename)
         extracted_text = DocumentProcessor.process_document(file_path)
         chunks = DocumentProcessor.chunk_text(extracted_text)
