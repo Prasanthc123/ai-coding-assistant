@@ -5,12 +5,18 @@ const language = document.getElementById("language");
 const newChatButton = document.querySelector(".new-chat");
 const sendButton = document.querySelector(".send-button");
 const historyContainer = document.querySelector(".history-item");
+const fileInput = document.getElementById("file-input");
+const cameraInput = document.getElementById("camera-input");
+const filePreview = document.getElementById("file-preview");
+const previewFilename = document.getElementById("preview-filename");
 
 const SESSIONS_KEY = "codepilot_chat_sessions";
 const ACTIVE_SESSION_KEY = "codepilot_active_session";
 const LANGUAGE_STORAGE_KEY = "codepilot_selected_language";
 const ONE_DAY = 24 * 60 * 60 * 1000;
 const TEN_DAYS = 10 * ONE_DAY;
+
+let uploadedFile = null;
 
 function createCodeCard(languageName, codeText) {
   const card = document.createElement("div");
@@ -30,9 +36,59 @@ function createCodeCard(languageName, codeText) {
   copyButton.addEventListener("click", async () => {
     await navigator.clipboard.writeText(codeText);
     copyButton.textContent = "Copied";
-
     setTimeout(() => {
       copyButton.textContent = "Copy";
+    }, 1500);
+  });
+
+  const downloadButton = document.createElement("button");
+  downloadButton.className = "copy-button";
+  downloadButton.type = "button";
+  downloadButton.textContent = "Download";
+
+  downloadButton.addEventListener("click", () => {
+    const extensions = {
+      "Python": "py",
+      "JavaScript": "js",
+      "TypeScript": "ts",
+      "Java": "java",
+      "C": "c",
+      "C++": "cpp",
+      "C#": "cs",
+      "Go": "go",
+      "Rust": "rs",
+      "PHP": "php",
+      "Ruby": "rb",
+      "Kotlin": "kt",
+      "Swift": "swift",
+      "Dart": "dart",
+      "Scala": "scala",
+      "R": "r",
+      "MATLAB": "m",
+      "SQL": "sql",
+      "HTML and CSS": "html",
+      "Bash": "sh",
+      "Code": "txt"
+    };
+
+    const extension = extensions[languageName] || "txt";
+    const filename = `code_${Date.now()}.${extension}`;
+
+    const blob = new Blob([codeText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+
+    downloadButton.textContent = "Downloaded";
+    setTimeout(() => {
+      downloadButton.textContent = "Download";
     }, 1500);
   });
 
@@ -40,7 +96,7 @@ function createCodeCard(languageName, codeText) {
   const code = document.createElement("code");
   code.textContent = codeText;
 
-  header.append(title, copyButton);
+  header.append(title, copyButton, downloadButton);
   pre.appendChild(code);
   card.append(header, pre);
 
@@ -201,7 +257,7 @@ function addMessage(text, role, saveToHistory = true, firstQuestion = "") {
 function showWelcomeMessage() {
   messages.innerHTML = "";
   messages.appendChild(
-    createMessage("Hello! Ask me a programming question.", "assistant")
+    createMessage("Hello! Upload code reference or describe what you need.", "assistant")
   );
 }
 
@@ -283,6 +339,8 @@ function loadCurrentChat() {
 
 function createNewChat() {
   localStorage.removeItem(ACTIVE_SESSION_KEY);
+  uploadedFile = null;
+  clearFilePreview();
   showWelcomeMessage();
   renderHistory();
   input.focus();
@@ -297,6 +355,8 @@ function setGeneratingState(isGenerating) {
   input.disabled = isGenerating;
   language.disabled = isGenerating;
   sendButton.disabled = isGenerating;
+  fileInput.disabled = isGenerating;
+  cameraInput.disabled = isGenerating;
   sendButton.textContent = isGenerating ? "…" : "↑";
 }
 
@@ -331,12 +391,49 @@ async function streamResponse(response, assistantMessage) {
   return fullResponse;
 }
 
+function clearFilePreview() {
+  uploadedFile = null;
+  filePreview.style.display = "none";
+  previewFilename.textContent = "file";
+}
+
+// ==================== FILE UPLOAD HANDLER ====================
+fileInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  uploadedFile = file;
+  previewFilename.textContent = file.name;
+  filePreview.style.display = "flex";
+  
+  console.log("File attached:", file.name);
+});
+
+// ==================== CAMERA UPLOAD HANDLER ====================
+cameraInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  uploadedFile = file;
+  previewFilename.textContent = file.name;
+  filePreview.style.display = "flex";
+  
+  console.log("Camera photo attached:", file.name);
+});
+
+// ==================== MAIN CHAT WITH FILE ====================
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const userMessage = input.value.trim();
 
-  if (!userMessage || input.disabled) {
+  if (!userMessage && !uploadedFile) {
+    alert("Enter a message or upload a file");
+    return;
+  }
+
+  if (!userMessage && uploadedFile) {
+    alert("Please describe what code you need");
     return;
   }
 
@@ -347,28 +444,63 @@ form.addEventListener("submit", async (event) => {
   setGeneratingState(true);
 
   const assistantMessage = addMessage(
-    "Generating response...",
+    "Generating code...",
     "assistant",
     false
   );
 
   try {
+    let prompt = userMessage;
+
+    // If file is uploaded, send it for processing
+    if (uploadedFile) {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+
+      try {
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error("File upload failed");
+        }
+
+        const uploadData = await uploadRes.json();
+        prompt = `${userMessage}\n\n[Document: ${uploadedFile.name}]`;
+        console.log("File uploaded successfully:", uploadData);
+      } catch (err) {
+        console.error("Upload error:", err);
+        prompt = userMessage + "\n[Note: File upload failed, using text only]";
+      }
+
+      uploadedFile = null;
+      clearFilePreview();
+    }
+
+    // Send to chat API
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        message: userMessage,
-        language: language.value
+        message: prompt,
+        language: language.value,
+        use_documents: true
       })
     });
 
+    if (!response.ok) {
+      throw new Error("Chat request failed");
+    }
+
     const answer = await streamResponse(response, assistantMessage);
     saveMessage(answer, "assistant");
-  } catch {
-    const errorMessage = "Could not connect to the backend or Ollama.";
 
+  } catch (err) {
+    const errorMessage = `Error: ${err.message || "Could not connect"}`;
     assistantMessage.textContent = errorMessage;
     saveMessage(errorMessage, "assistant");
   } finally {

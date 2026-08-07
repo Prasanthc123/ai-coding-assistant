@@ -8,15 +8,20 @@
 </head>
 <body>
   <main class="app-shell">
+
+    <!-- Sidebar -->
     <aside class="sidebar">
       <h1>CodePilot</h1>
       <button class="new-chat" type="button">+ New Chat</button>
 
       <p class="sidebar-label">CHAT HISTORY</p>
-      <div class="history-item">Today’s coding session</div>
+      <div class="history-item">Today's coding session</div>
     </aside>
 
+    <!-- Chat Panel -->
     <section class="chat-panel">
+
+      <!-- Header -->
       <header class="chat-header">
         <div>
           <h2>AI Coding Assistant</h2>
@@ -24,29 +29,61 @@
         </div>
       </header>
 
+      <!-- Messages -->
       <div id="messages" class="messages">
         <div class="message assistant">
-          Hello! Ask me a programming question.
+          Hello! Upload code reference or describe what you need.
         </div>
       </div>
 
+      <!-- Input Area -->
       <form id="chat-form" class="input-area">
+
         <div class="composer">
+
+          <!-- Hidden File Input -->
+          <input type="file" id="file-input" hidden accept=".pdf,.txt,.png,.jpg,.jpeg,.gif,.bmp,.docx" />
+
+          <!-- Hidden Camera Input (mobile) - accept only images -->
+          <input type="file" id="camera-input" hidden accept="image/*" capture />
+
+          <!-- Textarea -->
           <textarea
             id="message-input"
-            placeholder="Ask anything about programming..."
+            placeholder="Describe what code you need, or upload reference..."
             rows="2"
             autocomplete="off"
             required
           ></textarea>
 
+          <!-- Toolbar -->
           <div class="composer-toolbar">
-            <button class="composer-icon" type="button" aria-label="Add attachment">
-              +
+
+            <!-- File Upload Button -->
+            <button 
+              class="composer-icon" 
+              type="button" 
+              aria-label="Upload file"
+              onclick="document.getElementById('file-input').click()"
+              title="Upload PDF, image, or document"
+            >
+              📎
+            </button>
+
+            <!-- Camera Button -->
+            <button 
+              class="composer-icon" 
+              type="button" 
+              aria-label="Take photo or upload image"
+              onclick="document.getElementById('camera-input').click()"
+              title="Take photo (mobile) or select image (desktop)"
+            >
+              📷
             </button>
 
             <span class="composer-label">Local AI assistant</span>
 
+            <!-- Language Select -->
             <select id="language" aria-label="Programming language">
               <option value="Python">Python</option>
               <option value="JavaScript">JavaScript</option>
@@ -70,12 +107,24 @@
               <option value="Bash">Bash</option>
             </select>
 
+            <!-- Send Button -->
             <button class="send-button" type="submit" aria-label="Send message">
               ↑
             </button>
+
           </div>
+
+          <!-- Uploaded File Preview -->
+          <div id="file-preview" class="file-preview" style="display: none;">
+            <div class="preview-item">
+              <span id="preview-filename">file</span>
+              <button type="button" class="remove-btn" onclick="clearFilePreview()">✕</button>
+            </div>
+          </div>
+
         </div>
       </form>
+
     </section>
   </main>
 
