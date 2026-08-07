@@ -15,8 +15,36 @@ const ACTIVE_SESSION_KEY = "codepilot_active_session";
 const LANGUAGE_STORAGE_KEY = "codepilot_selected_language";
 const ONE_DAY = 24 * 60 * 60 * 1000;
 const TEN_DAYS = 10 * ONE_DAY;
+const MAX_SESSIONS = 50; // cap localStorage growth regardless of age
 
 let uploadedFile = null;
+
+form.noValidate = true;
+
+// Maps our dropdown language names to highlight.js language identifiers.
+const HLJS_LANGUAGE_MAP = {
+  "Python": "python",
+  "JavaScript": "javascript",
+  "TypeScript": "typescript",
+  "Java": "java",
+  "C": "c",
+  "C++": "cpp",
+  "C#": "csharp",
+  "Go": "go",
+  "Rust": "rust",
+  "PHP": "php",
+  "Ruby": "ruby",
+  "Kotlin": "kotlin",
+  "Swift": "swift",
+  "Dart": "dart",
+  "Scala": "scala",
+  "R": "r",
+  "MATLAB": "matlab",
+  "SQL": "sql",
+  "HTML and CSS": "xml",
+  "Bash": "bash",
+  "Code": "plaintext"
+};
 
 function createCodeCard(languageName, codeText) {
   const card = document.createElement("div");
@@ -96,9 +124,26 @@ function createCodeCard(languageName, codeText) {
   const code = document.createElement("code");
   code.textContent = codeText;
 
+  const normalizedName = Object.keys(HLJS_LANGUAGE_MAP).find(
+    (key) => key.toLowerCase() === (languageName || "").toLowerCase()
+  );
+  const hljsLanguage = normalizedName
+    ? HLJS_LANGUAGE_MAP[normalizedName]
+    : (window.hljs && window.hljs.getLanguage(languageName?.toLowerCase())
+        ? languageName.toLowerCase()
+        : null);
+
+  if (hljsLanguage) {
+    code.classList.add(`language-${hljsLanguage}`);
+  }
+
   header.append(title, copyButton, downloadButton);
   pre.appendChild(code);
   card.append(header, pre);
+
+  if (window.hljs) {
+    window.hljs.highlightElement(code);
+  }
 
   return card;
 }
@@ -174,9 +219,10 @@ function saveSessions(sessions) {
 }
 
 function cleanExpiredSessions() {
-  const sessions = loadSessions().filter((session) => {
-    return Date.now() - session.createdAt < TEN_DAYS;
-  });
+  const sessions = loadSessions()
+    .filter((session) => Date.now() - session.createdAt < TEN_DAYS)
+    .sort((first, second) => second.createdAt - first.createdAt)
+    .slice(0, MAX_SESSIONS);
 
   saveSessions(sessions);
 
@@ -432,12 +478,14 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  if (!userMessage && uploadedFile) {
-    alert("Please describe what code you need");
-    return;
-  }
+  // Allow file-only sends (e.g. a screenshot with no typed question) by
+  // falling back to a sensible default instruction for the model.
+  const effectiveMessage =
+    userMessage ||
+    "Analyze the attached file and generate the complete, working code solution for it.";
 
-  addMessage(userMessage, "user", true, userMessage);
+  const displayMessage = userMessage || `[Attached: ${uploadedFile.name}]`;
+  addMessage(displayMessage, "user", true, displayMessage);
 
   input.value = "";
   resizeInput();
@@ -450,7 +498,8 @@ form.addEventListener("submit", async (event) => {
   );
 
   try {
-    let prompt = userMessage;
+    let prompt = effectiveMessage;
+    let docId = null;
 
     // If file is uploaded, send it for processing
     if (uploadedFile) {
@@ -464,15 +513,17 @@ form.addEventListener("submit", async (event) => {
         });
 
         if (!uploadRes.ok) {
-          throw new Error("File upload failed");
+          const errorBody = await uploadRes.json().catch(() => null);
+          throw new Error(errorBody?.detail || "File upload failed");
         }
 
         const uploadData = await uploadRes.json();
-        prompt = `${userMessage}\n\n[Document: ${uploadedFile.name}]`;
+        docId = uploadData.doc_id || null;
+        prompt = `${effectiveMessage}\n\n[Document: ${uploadedFile.name}]`;
         console.log("File uploaded successfully:", uploadData);
       } catch (err) {
         console.error("Upload error:", err);
-        prompt = userMessage + "\n[Note: File upload failed, using text only]";
+        prompt = effectiveMessage + "\n[Note: File upload failed, using text only]";
       }
 
       uploadedFile = null;
@@ -488,7 +539,8 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         message: prompt,
         language: language.value,
-        use_documents: true
+        use_documents: true,
+        doc_id: docId
       })
     });
 
