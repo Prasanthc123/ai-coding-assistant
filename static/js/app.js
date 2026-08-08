@@ -497,27 +497,31 @@ input.addEventListener("paste", (event) => {
   const items = event.clipboardData?.items;
   if (!items) return;
 
+  let pastedAny = false;
+
   for (const item of items) {
     if (item.kind === "file" && item.type.startsWith("image/")) {
       const file = item.getAsFile();
       if (!file) continue;
 
-      event.preventDefault(); // don't also paste raw image data as text
-
       const extension = item.type.split("/")[1] || "png";
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const namedFile = new File(
         [file],
-        `pasted-screenshot-${Date.now()}.${extension}`,
+        `pasted-screenshot-${uniqueId}.${extension}`,
         { type: item.type }
       );
 
-      uploadedFiles = [namedFile];
-      previewFilename.textContent = namedFile.name;
-      filePreview.style.display = "flex";
-
+      uploadedFiles.push(namedFile);
+      pastedAny = true;
       console.log("Image pasted from clipboard:", namedFile.name);
-      break;
     }
+  }
+
+  if (pastedAny) {
+    event.preventDefault(); // don't also paste raw image data as text
+    previewFilename.textContent = uploadedFiles.map((f) => f.name).join(", ");
+    filePreview.style.display = "flex";
   }
 });
 
