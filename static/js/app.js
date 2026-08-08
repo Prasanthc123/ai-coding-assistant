@@ -17,7 +17,7 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
 const TEN_DAYS = 10 * ONE_DAY;
 const MAX_SESSIONS = 50; // cap localStorage growth regardless of age
 
-let uploadedFile = null;
+let uploadedFiles = [];
 let activeDocId = null; // doc_id of the most recently uploaded file in the current conversation
 
 form.noValidate = true;
@@ -407,7 +407,7 @@ function loadCurrentChat() {
 
 function createNewChat() {
   localStorage.removeItem(ACTIVE_SESSION_KEY);
-  uploadedFile = null;
+  uploadedFiles = [];
   activeDocId = null;
   clearFilePreview();
   showWelcomeMessage();
@@ -461,33 +461,35 @@ async function streamResponse(response, assistantMessage) {
 }
 
 function clearFilePreview() {
-  uploadedFile = null;
+  uploadedFiles = [];
+  fileInput.value = "";
+  cameraInput.value = "";
   filePreview.style.display = "none";
   previewFilename.textContent = "file";
 }
 
 // ==================== FILE UPLOAD HANDLER ====================
 fileInput.addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
 
-  uploadedFile = file;
-  previewFilename.textContent = file.name;
+  uploadedFiles = files;
+  previewFilename.textContent = files.map((f) => f.name).join(", ");
   filePreview.style.display = "flex";
   
-  console.log("File attached:", file.name);
+  console.log("Files attached:", files.map((f) => f.name));
 });
 
 // ==================== CAMERA UPLOAD HANDLER ====================
 cameraInput.addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
 
-  uploadedFile = file;
-  previewFilename.textContent = file.name;
+  uploadedFiles = files;
+  previewFilename.textContent = files.map((f) => f.name).join(", ");
   filePreview.style.display = "flex";
   
-  console.log("Camera photo attached:", file.name);
+  console.log("Camera photos attached:", files.map((f) => f.name));
 });
 
 // ==================== PASTE-TO-ATTACH (Ctrl+V a screenshot) ====================
@@ -509,7 +511,7 @@ input.addEventListener("paste", (event) => {
         { type: item.type }
       );
 
-      uploadedFile = namedFile;
+      uploadedFiles = [namedFile];
       previewFilename.textContent = namedFile.name;
       filePreview.style.display = "flex";
 
@@ -519,24 +521,25 @@ input.addEventListener("paste", (event) => {
   }
 });
 
-// ==================== MAIN CHAT WITH FILE ====================
+// ==================== MAIN CHAT WITH FILE(s) ====================
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const userMessage = input.value.trim();
 
-  if (!userMessage && !uploadedFile) {
+  if (!userMessage && uploadedFiles.length === 0) {
     alert("Enter a message or upload a file");
     return;
   }
 
-  // Allow file-only sends (e.g. a screenshot with no typed question) by
+  // Allow file-only sends (e.g. screenshots with no typed question) by
   // falling back to a sensible default instruction for the model.
   const effectiveMessage =
     userMessage ||
-    "Analyze the attached file and generate the complete, working code solution for it.";
+    "Analyze the attached files and generate the complete, working code solution for them.";
 
-  const displayMessage = userMessage || `[Attached: ${uploadedFile.name}]`;
+  const fileNames = uploadedFiles.map((f) => f.name).join(", ");
+  const displayMessage = userMessage || `[Attached: ${fileNames}]`;
   addMessage(displayMessage, "user", true, displayMessage);
 
   input.value = "";
@@ -551,41 +554,42 @@ form.addEventListener("submit", async (event) => {
 
   try {
     let prompt = effectiveMessage;
-    // Follow-up messages with no new attachment stay scoped to whatever
-    // document was last uploaded in this conversation, instead of falling
-    // back to a search across every document ever uploaded (which was
-    // pulling in unrelated old test files like resumes/screenshots).
-    let docId = activeDocId;
+    const docIds = [];
 
-    // If file is uploaded, send it for processing
-    if (uploadedFile) {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
+    // Upload all attached files and collect their doc_ids
+    if (uploadedFiles.length > 0) {
+      const names = uploadedFiles.map((f) => f.name).join(", ");
+      prompt = `${effectiveMessage}\n\n[Documents: ${names}]`;
 
-      try {
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData
-        });
+      for (const file of uploadedFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
 
-        if (!uploadRes.ok) {
-          const errorBody = await uploadRes.json().catch(() => null);
-          throw new Error(errorBody?.detail || "File upload failed");
+        try {
+          const uploadRes = await fetch("/api/upload", {
+            method: "POST",
+            body: formData
+          });
+
+          if (!uploadRes.ok) {
+            const errorBody = await uploadRes.json().catch(() => null);
+            throw new Error(errorBody?.detail || `Upload failed for ${file.name}`);
+          }
+
+          const uploadData = await uploadRes.json();
+          if (uploadData.doc_id) {
+            docIds.push(uploadData.doc_id);
+          }
+          console.log("File uploaded successfully:", uploadData);
+        } catch (err) {
+          console.error("Upload error:", err);
+          // Continue with remaining files; the final prompt still goes through
         }
-
-        const uploadData = await uploadRes.json();
-        docId = uploadData.doc_id || null;
-        setActiveDocId(docId);
-        prompt = `${effectiveMessage}\n\n[Document: ${uploadedFile.name}]`;
-        console.log("File uploaded successfully:", uploadData);
-      } catch (err) {
-        console.error("Upload error:", err);
-        prompt = effectiveMessage + "\n[Note: File upload failed, using text only]";
       }
-
-      uploadedFile = null;
-      clearFilePreview();
     }
+
+    uploadedFiles = [];
+    clearFilePreview();
 
     // Send to chat API
     const response = await fetch("/api/chat", {
@@ -597,7 +601,7 @@ form.addEventListener("submit", async (event) => {
         message: prompt,
         language: language.value,
         use_documents: true,
-        doc_id: docId
+        doc_ids: docIds
       })
     });
 
