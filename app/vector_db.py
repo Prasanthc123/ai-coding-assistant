@@ -15,6 +15,14 @@ FAISS_METADATA_PATH = FAISS_DIR / "metadata.json"
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
+# Minimum cosine similarity (via normalized inner product) for a chunk to be
+# considered relevant enough to inject into the prompt as context. Without
+# this, top_k search always returns *something* even when nothing in the
+# store is actually related to the query, which pollutes answers with
+# unrelated documents (e.g. an old resume or screenshot from earlier
+# testing showing up in an unrelated coding question).
+MIN_SIMILARITY_SCORE = 0.35
+
 # Embeddings/FAISS are optional heavy dependencies. If they aren't
 # installed (or fail to load, e.g. no internet to download the model on
 # first run), VectorDB transparently falls back to substring search so the
@@ -206,6 +214,8 @@ class VectorDB:
                 results = []
                 for score, idx in zip(scores[0], indices[0]):
                     if idx < 0 or idx >= len(cls._chunk_records):
+                        continue
+                    if score < MIN_SIMILARITY_SCORE:
                         continue
                     record = cls._chunk_records[idx]
                     results.append(
