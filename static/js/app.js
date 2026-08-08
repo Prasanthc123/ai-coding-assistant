@@ -18,6 +18,7 @@ const TEN_DAYS = 10 * ONE_DAY;
 const MAX_SESSIONS = 50; // cap localStorage growth regardless of age
 
 let uploadedFile = null;
+let activeDocId = null; // doc_id of the most recently uploaded file in the current conversation
 
 form.noValidate = true;
 
@@ -247,6 +248,7 @@ function createSession(firstQuestion) {
     title: firstQuestion.slice(0, 40),
     createdAt: Date.now(),
     language: language.value,
+    lastDocId: null,
     messages: []
   };
 
@@ -267,6 +269,24 @@ function getOrCreateSession(firstQuestion) {
   }
 
   return createSession(firstQuestion);
+}
+
+function setActiveDocId(docId) {
+  activeDocId = docId;
+
+  const activeId = localStorage.getItem(ACTIVE_SESSION_KEY);
+  if (!activeId) {
+    return;
+  }
+
+  const sessions = loadSessions().map((session) => {
+    if (session.id === activeId) {
+      return { ...session, lastDocId: docId };
+    }
+    return session;
+  });
+
+  saveSessions(sessions);
 }
 
 function saveMessage(text, role, firstQuestion = "") {
@@ -315,11 +335,13 @@ function openSession(sessionId) {
   messages.innerHTML = "";
 
   if (!session) {
+    activeDocId = null;
     showWelcomeMessage();
     return;
   }
 
   language.value = session.language || "Python";
+  activeDocId = session.lastDocId || null;
 
   session.messages.forEach((message) => {
     addMessage(message.text, message.role, false);
@@ -386,6 +408,7 @@ function loadCurrentChat() {
 function createNewChat() {
   localStorage.removeItem(ACTIVE_SESSION_KEY);
   uploadedFile = null;
+  activeDocId = null;
   clearFilePreview();
   showWelcomeMessage();
   renderHistory();
@@ -467,6 +490,35 @@ cameraInput.addEventListener("change", async (e) => {
   console.log("Camera photo attached:", file.name);
 });
 
+// ==================== PASTE-TO-ATTACH (Ctrl+V a screenshot) ====================
+input.addEventListener("paste", (event) => {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+
+  for (const item of items) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      event.preventDefault(); // don't also paste raw image data as text
+
+      const extension = item.type.split("/")[1] || "png";
+      const namedFile = new File(
+        [file],
+        `pasted-screenshot-${Date.now()}.${extension}`,
+        { type: item.type }
+      );
+
+      uploadedFile = namedFile;
+      previewFilename.textContent = namedFile.name;
+      filePreview.style.display = "flex";
+
+      console.log("Image pasted from clipboard:", namedFile.name);
+      break;
+    }
+  }
+});
+
 // ==================== MAIN CHAT WITH FILE ====================
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -499,7 +551,11 @@ form.addEventListener("submit", async (event) => {
 
   try {
     let prompt = effectiveMessage;
-    let docId = null;
+    // Follow-up messages with no new attachment stay scoped to whatever
+    // document was last uploaded in this conversation, instead of falling
+    // back to a search across every document ever uploaded (which was
+    // pulling in unrelated old test files like resumes/screenshots).
+    let docId = activeDocId;
 
     // If file is uploaded, send it for processing
     if (uploadedFile) {
@@ -519,6 +575,7 @@ form.addEventListener("submit", async (event) => {
 
         const uploadData = await uploadRes.json();
         docId = uploadData.doc_id || null;
+        setActiveDocId(docId);
         prompt = `${effectiveMessage}\n\n[Document: ${uploadedFile.name}]`;
         console.log("File uploaded successfully:", uploadData);
       } catch (err) {
