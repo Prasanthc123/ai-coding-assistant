@@ -1,7 +1,7 @@
 # app/main.py
 import json
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, List
 import uuid
 import httpx
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     language: str
     use_documents: bool = False
     doc_id: Optional[str] = None
+    doc_ids: Optional[List[str]] = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -122,7 +123,21 @@ async def stream_ollama_response(request: ChatRequest, context: str = "") -> Asy
     Uses the provided `context` string (documents) when available.
     """
     if request.use_documents and context:
-        prompt = f"""You are an expert AI coding assistant with access to uploaded documents, images, and code references. Your primary task: Analyze the user's question along with the provided document/image context and generate complete, working code. --- DOCUMENT/IMAGE CONTEXT --- {context} --- END CONTEXT --- Instructions for Code Generation: 1. If the context contains code, algorithm, or problem description, generate a complete working solution 2. Use {request.language} as the programming language 3. Include detailed comments explaining each part 4. Format all code with triple backticks and language name: ```{request.language} your complete code here ``` 5. Provide clear explanations alongside the code 6. Make sure code is production-ready and handles edge cases 7. Include example usage if applicable User Request: {request.message}"""
+        prompt = f"""You are an expert AI coding assistant. The user may have provided optional document or image context below. Use the context ONLY if it is directly relevant to the request. If the request is a new, unrelated coding question, ignore the context completely and answer it directly.
+
+--- CONTEXT (use only if relevant) ---
+{context}
+--- END CONTEXT ---
+
+Instructions for Code Generation:
+1. Generate complete, working code in {request.language}
+2. Include detailed comments explaining the logic
+3. Format code with triple backticks and the language name: ```{request.language} your code here ```
+4. Provide clear explanations alongside the code
+5. Make code production-ready and handle edge cases
+6. If the request is about the provided context (e.g., solving a problem in an image/PDF), use it. If not, answer the question directly.
+
+User Request: {request.message}"""
     else:
         prompt = f"""You are an expert AI coding assistant. Your primary task: Answer the user's question and provide complete, working code examples when requested. Instructions for Code Generation: 1. Generate complete, working code examples in {request.language} 2. Include detailed comments explaining the logic 3. Format code with triple backticks and language name: ```{request.language} your complete code here ``` 4. Provide clear explanations with the code 5. Make code production-ready and handle edge cases 6. Be natural, conversational, and helpful 7. Include example usage when relevant User Request: {request.message}"""
 
@@ -156,22 +171,38 @@ async def stream_ollama_response(request: ChatRequest, context: str = "") -> Asy
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """
-    Build document context (prefer direct doc_id lookup), then stream response.
+    Build document context from explicit doc_id(s), then stream response.
     """
     context = ""
     if request.use_documents:
         try:
-            # 1) If frontend provided a doc_id, prefer direct lookup
+            # 1) Collect explicit doc ids (list or single legacy value)
+            doc_ids = []
+            if request.doc_ids:
+                doc_ids.extend(request.doc_ids)
             if request.doc_id:
-                try:
-                    doc = VectorDB.get_document(request.doc_id)
-                    if doc:
-                        filename = doc.get("filename", "Unknown")
-                        text = doc.get("text") or "\n\n".join(doc.get("chunks", []))
-                        context = f"[From: {filename}]\n{text}"
-                except Exception as e:
-                    print(f"VectorDB.get_document error: {e}")
-                    context = ""
+                doc_ids.append(request.doc_id)
+
+            seen = set()
+            unique_doc_ids = []
+            for did in doc_ids:
+                if did and did not in seen:
+                    seen.add(did)
+                    unique_doc_ids.append(did)
+
+            if unique_doc_ids:
+                context_parts = []
+                for did in unique_doc_ids:
+                    try:
+                        doc = VectorDB.get_document(did)
+                        if doc:
+                            filename = doc.get("filename", "Unknown")
+                            text = doc.get("text") or "\n\n".join(doc.get("chunks", []))
+                            context_parts.append(f"[From: {filename}]\n{text}")
+                    except Exception as e:
+                        print(f"VectorDB.get_document error for {did}: {e}")
+                        continue
+                context = "\n\n---\n\n".join(context_parts)
 
             # 2) Fallback: semantic search using the message
             if not context:
